@@ -12,8 +12,10 @@ const
   );
   strErrorDBConnect = 'Ошибка соединения с БД';
   strErrorSQLExec = 'Ошибка выполнения SQL : ';
+  strErrorDeviceConnect = 'Ошибка подключения к устройству ';
   strDefaultAddr = '127.0.0.1';
   strDefaultName = 'ИНЖАЛИД ДЕЖИЦЕ';
+  iDataBufferSize = 4095;
   iDefaultRack = 0;
   iDefaultSlot = 2;
   amPolling  = 0;
@@ -29,6 +31,8 @@ const
   );
 
 type
+
+  TDataBuffer = packed array [0..iDataBufferSize] of byte;
 
   TSelectQuery = class
   private
@@ -58,6 +62,7 @@ type
     fAddr : string;
     fRack : integer;
     fSlot : integer;
+    slEnumDataIDs : TStringList;
     function GetId : integer;
     function GetName : string;
     procedure SetName(NewName : string);
@@ -67,6 +72,7 @@ type
     procedure SetRack(NewRack : integer);
     function GetSlot : integer;
     procedure SetSlot(NewSlot : integer);
+    function GetDataIDs : TStringList;
   public
     ClientConnection : TS7Client;
     constructor Create(DEV_ID: integer);
@@ -76,22 +82,44 @@ type
     property Addr : string read GetAddr write SetAddr;
     property Rack : integer read GetRack write SetRack;
     property Slot : integer read GetSlot write SetSlot;
+    property EnumDataIDs : TStringList read GetDataIDs;
     function Connect : boolean;
   end;
 
   TSnap7Data = class
   private
     fId : integer;
+    fName : string;
     fArea : byte;
     fDBNum : integer;
     fDataStart : integer;
     fDataAmount : integer;
     fWLen : integer;
-    fBuffer : packed array [0..4095] of byte; // 4 K buffer
+    fBuffer : TDataBuffer; // 4 K buffer
+    fLastError: integer;
+    function GetId : integer;
+    function GetName : string;
+    function GetArea : byte;
+    function GetDBNum : integer;
+    function GetDataStart : integer;
+    function GetDataAmount : integer;
+    function GetWLen : integer;
+    function GetBuffer : TDataBuffer;
+    procedure SetFLastError(const Value: integer);
   public
     Device : TSnap7Device;
-    constructor Create(DM_ID : integer);
+    constructor Create(DM_ID : integer; Async : boolean);
     destructor Destroy;
+    property Id : integer read GetId;
+    property Name : string read GetName;
+    property Area : byte read GetArea;
+    property DBNum : integer read GetDBNum;
+    property DataStart : integer read GetDataStart;
+    property DataAmount : integer read GetDataAmount;
+    property WLen : integer read GetWLen;
+    property Buffer : TDataBuffer read GetBuffer;
+    property LastError : integer read fLastError write SetFLastError;
+    function WordSize(Amount, WordLength: integer): integer;
   end;
 
 var
@@ -270,6 +298,11 @@ begin
   Result := ClientConnection.ConnectTo(fAddr, fRack, fSlot) = 0;
 end;
 
+function TSnap7Device.GetDataIDs;
+begin
+  GetDataIDs := slEnumDataIDs;
+end;
+
 constructor TSnap7Device.Create(DEV_ID: integer);
 begin
   inherited Create;
@@ -291,9 +324,20 @@ begin
   finally
     Destroy;
   end;
+  slEnumDataIDs := TStringList.Create;
+  with TSelectQuery.Create('select data_map.dm_id from data_map, device '
+  + 'where (device.dev_id = data_map.dev_id) and (device.dev_id = ' + IntToStr(fId)
+  + ')').Data do try
+    while not(EOF) do begin
+      slEnumDataIDs.Add(IntToStr(Fields[0].AsInteger));
+      Next;
+    end; // while not(EOF)
+  finally
+    Destroy;
+  end;
   ClientConnection := TS7Client.Create;
 //  ClientConnection.SetAsCallback(@CliCompletion, nil);
-  if not(Connect) then raise Exception.Create('Ошибка подключения к устройству ' + fAddr + ':'
+  if not(Connect) then raise Exception.Create(strErrorDeviceConnect + fAddr + ':'
     + IntToStr(fRack) + ':' + IntToStr(fSlot));
 end;
 
@@ -305,15 +349,105 @@ end;
 
 destructor TSnap7Device.Destroy;
 begin
+  slEnumDataIDs.Free;
   ClientConnection.Free;
   inherited Destroy;
 end;
 
 { TSnap7Data }
 
-constructor TSnap7Data.Create(DM_ID : integer);
+function TSnap7Data.GetId : integer;
+begin
+  Getid := fId;
+end;
+
+function TSnap7Data.GetName : string;
+begin
+  GetName := fName;
+end;
+
+function TSnap7Data.GetArea : byte;
+begin
+  GetArea := fArea;
+end;
+
+function TSnap7Data.GetDBNum : integer;
+begin
+  GetDBNum := fDBNum;
+end;
+
+function TSnap7Data.GetDataStart : integer;
+begin
+  GetDataStart := fDataStart;
+end;
+
+function TSnap7Data.GetDataAmount : integer;
+begin
+  GetDataAmount := fDataAmount;
+end;
+
+function TSnap7Data.GetWLen : integer;
+begin
+  GetWLen := fWLen;
+end;
+
+function TSnap7Data.GetBuffer : TDataBuffer;
+begin
+  GetBuffer := fBuffer;
+end;
+
+function TSnap7Data.WordSize(Amount, WordLength: integer): integer;
+begin
+  case WordLength of
+    S7WLBit : Result := Amount * 1;  // S7 sends 1 byte per bit
+    S7WLByte : Result := Amount * 1;
+    S7WLWord : Result := Amount * 2;
+    S7WLDword : Result := Amount * 4;
+    S7WLReal : Result := Amount * 4;
+    S7WLCounter : Result := Amount * 2;
+    S7WLTimer : Result := Amount * 2;
+  else
+    Result := 0;
+  end;
+end;
+
+procedure TSnap7Data.SetFLastError(const Value: integer);
+begin
+  FLastError := Value;
+end;
+
+constructor TSnap7Data.Create(DM_ID : integer; Async : boolean);
 begin
   inherited Create;
+  with TSelectQuery.Create('select data_map.name, data_map.area_id, data_map.db_num, '
+  + 'data_map.data_start, data_map.data_amount, data_map.wlen_id, data_map.dev_id '
+  + 'from data_map, area, wlen where (data_map.dm_id = ' + IntToStr(DM_ID) + ') ').Data do
+  try
+    if RecordCount > 0 then begin
+      fId := DM_ID;
+      fName := Fields[0].AsString;
+      fArea := AreaOf[Fields[1].AsInteger];
+      fDBNum := Fields[2].AsInteger;
+      fDataStart := Fields[3].AsInteger;
+      fDataAmount := Fields[4].AsInteger;
+      fWLen := WLenOf[Fields[5].AsInteger];
+      with TSnap7Device.Create(Fields[6].AsInteger) do try
+        if Async then
+          LastError := ClientConnection.AsReadArea(
+            fArea, DBNum, DataStart, DataAmount, fWlen, @fBuffer)
+        else
+          LastError := ClientConnection.ReadArea(
+            fArea, DBNum, DataStart, DataAmount, fWlen, @fBuffer);
+      finally
+        Destroy;
+      end;
+    end
+    else begin
+      raise Exception.Create('Data description not found');
+    end;
+  finally
+    Destroy;
+  end;
 end;
 
 destructor TSnap7Data.Destroy;

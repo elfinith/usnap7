@@ -84,42 +84,54 @@ type
     property Slot : integer read GetSlot write SetSlot;
     property EnumDataIDs : TStringList read GetDataIDs;
     function Connect : boolean;
+    procedure AddData(strName : string; iAreaId, iDBNum, iDataStart, iDataAmount, iWLenId : integer);
   end;
 
   TSnap7Data = class
   private
     fId : integer;
     fName : string;
-    fArea : byte;
+    fArea : integer;
     fDBNum : integer;
     fDataStart : integer;
     fDataAmount : integer;
     fWLen : integer;
     fBuffer : TDataBuffer; // 4 K buffer
+    fAsync : boolean;
     fLastError: integer;
     function GetId : integer;
     function GetName : string;
-    function GetArea : byte;
+    procedure SetName(strName : string);
+    function GetArea : integer;
+    procedure SetArea(iAreaId : integer);
     function GetDBNum : integer;
+    procedure SetDBNum(iDBNum : integer);
     function GetDataStart : integer;
+    procedure SetDataStart(iDataStart : integer);
     function GetDataAmount : integer;
+    procedure SetDataAmount(iDataAmount : integer);
     function GetWLen : integer;
+    procedure SetWLen(iWLenId : integer);
     function GetBuffer : TDataBuffer;
+    procedure SetBuffer(Buf : TDataBuffer);
+    function GetAsync : boolean;
+    procedure SetAsync(bAsync : boolean);
     procedure SetFLastError(const Value: integer);
   public
     Device : TSnap7Device;
     constructor Create(DM_ID : integer; Async : boolean);
     destructor Destroy;
     property Id : integer read GetId;
-    property Name : string read GetName;
-    property Area : byte read GetArea;
-    property DBNum : integer read GetDBNum;
-    property DataStart : integer read GetDataStart;
-    property DataAmount : integer read GetDataAmount;
-    property WLen : integer read GetWLen;
-    property Buffer : TDataBuffer read GetBuffer;
+    property Name : string read GetName write SetName;
+    property Area : integer read GetArea write SetArea;
+    property DBNum : integer read GetDBNum write SetDBNum;
+    property DataStart : integer read GetDataStart write SetDataStart;
+    property DataAmount : integer read GetDataAmount write SetDataAmount;
+    property WLen : integer read GetWLen write SetWLen;
+    property Buffer : TDataBuffer read GetBuffer write SetBuffer;
+    property Async : boolean read GetAsync write SetAsync;
     property LastError : integer read fLastError write SetFLastError;
-    function WordSize(Amount, WordLength: integer): integer;
+    function WordSize(Amount, WordLength: integer) : integer;
   end;
 
 var
@@ -156,6 +168,12 @@ begin
   end;
   DBt.Free;
   DB.Free;
+end;
+
+procedure CliCompletion(usrPtr : pointer; opCode, opResult : integer); {$IFDEF MSWINDOWS} stdcall; {$ELSE} cdecl; {$ENDIF}
+begin
+  JobResult := opResult;
+  JobDone := true;
 end;
 
 { TSelectQuery }
@@ -203,7 +221,8 @@ begin
   GetDeviceIDs := slEnumDeviceIDs;
 end;
 
-procedure TSnap7WorkArea.AddDevice(strName : string; strAddr : string; iRack : integer; iSlot : integer);
+procedure TSnap7WorkArea.AddDevice(strName : string; strAddr : string;
+  iRack : integer; iSlot : integer);
 var
   newID : integer;
 begin
@@ -303,6 +322,24 @@ begin
   GetDataIDs := slEnumDataIDs;
 end;
 
+procedure TSnap7Device.AddData(strName : string; iAreaId, iDBNum, iDataStart,
+  iDataAmount, iWLenId : integer);
+var
+  newID : integer;
+begin
+  with TSelectQuery.Create('select max(dm_id) from data_map where dev_id='
+  + IntToStr(fId) + ';') do try
+    newID := Data.Fields[0].AsInteger + 1;
+  finally
+    Destroy;
+  end;
+  UpdateQuery('insert into data_map(dm_id,name,dev_id,area_id,db_num,data_start,'
+    + 'data_amount,wlen_id) values(' + IntToStr(newID) + ',''' + strName + ''','
+    + IntToStr(fId) + ',' + IntToStr(iAreaId) + ',' + IntToStr(iDBNum) + ',' + IntToStr(iDataStart)
+    + ',' + IntToStr(iDataAmount) + ',' + IntToStr(iWLenId) + ');');
+  slEnumDataIDs.Add(IntToStr(newID));
+end;
+
 constructor TSnap7Device.Create(DEV_ID: integer);
 begin
   inherited Create;
@@ -341,12 +378,6 @@ begin
     + IntToStr(fRack) + ':' + IntToStr(fSlot));
 end;
 
-procedure CliCompletion(usrPtr : pointer; opCode, opResult : integer); {$IFDEF MSWINDOWS} stdcall; {$ELSE} cdecl; {$ENDIF}
-begin
-  JobResult := opResult;
-  JobDone := true;
-end;
-
 destructor TSnap7Device.Destroy;
 begin
   slEnumDataIDs.Free;
@@ -366,9 +397,22 @@ begin
   GetName := fName;
 end;
 
-function TSnap7Data.GetArea : byte;
+procedure TSnap7Data.SetName(strName : string);
+begin
+  UpdateQuery('update data_map set name = ''' + strName  + ''' where dm_id=' + IntToStr(fId) + ';');
+  fName := strName;
+end;
+
+function TSnap7Data.GetArea : integer;
 begin
   GetArea := fArea;
+end;
+
+procedure TSnap7Data.SetArea(iAreaId : integer);
+begin
+  UpdateQuery('update data_map set area_id = ' + IntToStr(iAreaId)
+    + ' where dm_id=' + IntToStr(fId) + ';');
+  fArea := iAreaId;
 end;
 
 function TSnap7Data.GetDBNum : integer;
@@ -376,9 +420,23 @@ begin
   GetDBNum := fDBNum;
 end;
 
+procedure TSnap7Data.SetDBNum(iDBNum : integer);
+begin
+  UpdateQuery('update data_map set db_num = ' + IntToStr(iDBNum)
+    + ' where dm_id=' + IntToStr(fId) + ';');
+  fDBNum := iDBNum;
+end;
+
 function TSnap7Data.GetDataStart : integer;
 begin
   GetDataStart := fDataStart;
+end;
+
+procedure TSnap7Data.SetDataStart(iDataStart : integer);
+begin
+  UpdateQuery('update data_map set data_start = ' + IntToStr(iDataStart)
+    + ' where dm_id=' + IntToStr(fId) + ';');
+  fDataStart := iDataStart;
 end;
 
 function TSnap7Data.GetDataAmount : integer;
@@ -386,9 +444,23 @@ begin
   GetDataAmount := fDataAmount;
 end;
 
+procedure TSnap7Data.SetDataAmount(iDataAmount : integer);
+begin
+  UpdateQuery('update data_map set data_amount = ' + IntToStr(iDataAmount)
+    + ' where dm_id=' + IntToStr(fId) + ';');
+  fDataAmount := iDataAmount;
+end;
+
 function TSnap7Data.GetWLen : integer;
 begin
   GetWLen := fWLen;
+end;
+
+procedure TSnap7Data.SetWLen(iWLenId : integer);
+begin
+  UpdateQuery('update data_map set wlen_id = ' + IntToStr(iWlenId)
+    + ' where dm_id=' + IntToStr(fId) + ';');
+  fWlen := iWlenId;
 end;
 
 function TSnap7Data.GetBuffer : TDataBuffer;
@@ -396,9 +468,41 @@ begin
   GetBuffer := fBuffer;
 end;
 
+procedure TSnap7Data.SetBuffer(Buf : TDataBuffer);
+var
+  DEV_ID, x : integer;
+begin
+  with TSelectQuery.Create('select dev_id from data_map where dm_id=' + IntToStr(fId) + ';').Data do
+  try
+    DEV_ID := Fields[0].AsInteger;
+  finally
+    Destroy;
+  end;
+  with TSnap7Device.Create(DEV_ID) do try
+    if fAsync then
+      LastError := ClientConnection.AsWriteArea(AreaOf[fArea],fDBNum,fDataStart,fDataAmount,WLenOf[fWLen],@Buf)
+    else
+      LastError := ClientConnection.WriteArea(AreaOf[fArea],fDBNum,fDataStart,fDataAmount,WLenOf[fWLen],@Buf);
+  finally
+    Destroy;
+  end;
+end;
+
+function TSnap7Data.GetAsync : boolean;
+begin
+  GetAsync := fAsync;
+end;
+
+procedure TSnap7Data.SetAsync(bAsync : boolean);
+begin
+  if bAsync then UpdateQuery('update data_map set async=1 where dm_id=' + IntToStr(fId) + ';')
+  else UpdateQuery('update data_map set async=0 where dm_id=' + IntToStr(fId) + ';');
+  fAsync := bAsync;
+end;
+
 function TSnap7Data.WordSize(Amount, WordLength: integer): integer;
 begin
-  case WordLength of
+  case WLenOf[WordLength] of
     S7WLBit : Result := Amount * 1;  // S7 sends 1 byte per bit
     S7WLByte : Result := Amount * 1;
     S7WLWord : Result := Amount * 2;
@@ -416,28 +520,29 @@ begin
   FLastError := Value;
 end;
 
-constructor TSnap7Data.Create(DM_ID : integer; Async : boolean);
+constructor TSnap7Data.Create(DM_ID: integer; Async: boolean);
 begin
   inherited Create;
   with TSelectQuery.Create('select data_map.name, data_map.area_id, data_map.db_num, '
-  + 'data_map.data_start, data_map.data_amount, data_map.wlen_id, data_map.dev_id '
+  + 'data_map.data_start, data_map.data_amount, data_map.wlen_id, data_map.dev_id, data_map.async '
   + 'from data_map, area, wlen where (data_map.dm_id = ' + IntToStr(DM_ID) + ') ').Data do
   try
     if RecordCount > 0 then begin
       fId := DM_ID;
       fName := Fields[0].AsString;
-      fArea := AreaOf[Fields[1].AsInteger];
+      fArea := Fields[1].AsInteger;
       fDBNum := Fields[2].AsInteger;
       fDataStart := Fields[3].AsInteger;
       fDataAmount := Fields[4].AsInteger;
-      fWLen := WLenOf[Fields[5].AsInteger];
+      fWLen := Fields[5].AsInteger;
+      fAsync := Fields[7].AsInteger = 1;
       with TSnap7Device.Create(Fields[6].AsInteger) do try
-        if Async then
+        if fAsync then
           LastError := ClientConnection.AsReadArea(
-            fArea, DBNum, DataStart, DataAmount, fWlen, @fBuffer)
+            AreaOf[fArea], DBNum, DataStart, DataAmount, WLenOf[fWLen], @fBuffer)
         else
           LastError := ClientConnection.ReadArea(
-            fArea, DBNum, DataStart, DataAmount, fWlen, @fBuffer);
+            AreaOf[fArea], DBNum, DataStart, DataAmount, WLenOf[fWLen], @fBuffer);
       finally
         Destroy;
       end;
@@ -454,6 +559,5 @@ destructor TSnap7Data.Destroy;
 begin
   inherited Destroy;
 end;
-
 
 end.

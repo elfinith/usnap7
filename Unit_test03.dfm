@@ -2,7 +2,7 @@ object Form1: TForm1
   Left = 0
   Top = 0
   Caption = 'Form1'
-  ClientHeight = 401
+  ClientHeight = 418
   ClientWidth = 418
   Color = clBtnFace
   Font.Charset = DEFAULT_CHARSET
@@ -92,7 +92,7 @@ object Form1: TForm1
   end
   object Label12: TLabel
     Left = 152
-    Top = 337
+    Top = 359
     Width = 27
     Height = 13
     Caption = 'DATA'
@@ -217,9 +217,43 @@ object Form1: TForm1
   end
   object Edit11: TEdit
     Left = 215
-    Top = 334
-    Width = 195
+    Top = 356
+    Width = 93
     Height = 21
     TabOrder = 15
+  end
+  object Button3: TButton
+    Left = 233
+    Top = 383
+    Width = 75
+    Height = 25
+    Caption = #1057#1086#1079#1076#1072#1090#1100
+    TabOrder = 16
+    OnClick = Button3Click
+  end
+  object Button4: TButton
+    Left = 152
+    Top = 383
+    Width = 75
+    Height = 25
+    Caption = #1048#1079#1084#1077#1085#1080#1090#1100
+    TabOrder = 17
+    OnClick = Button4Click
+  end
+  object CheckBox1: TCheckBox
+    Left = 215
+    Top = 333
+    Width = 97
+    Height = 17
+    Caption = 'Async'
+    TabOrder = 18
+  end
+  object Edit12: TEdit
+    Left = 314
+    Top = 356
+    Width = 75
+    Height = 21
+    TabOrder = 19
+    Text = '55'
   end
 end

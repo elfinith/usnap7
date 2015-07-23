@@ -36,11 +36,17 @@ type
     Edit9: TEdit;
     Edit10: TEdit;
     Edit11: TEdit;
+    Button3: TButton;
+    Button4: TButton;
+    CheckBox1: TCheckBox;
+    Edit12: TEdit;
     procedure BitBtn1Click(Sender: TObject);
     procedure ListBox1Click(Sender: TObject);
     procedure Button1Click(Sender: TObject);
     procedure Button2Click(Sender: TObject);
     procedure ListBox2Click(Sender: TObject);
+    procedure Button3Click(Sender: TObject);
+    procedure Button4Click(Sender: TObject);
   private
     { Private declarations }
   public
@@ -92,6 +98,41 @@ begin
   end;
 end;
 
+procedure TForm1.Button3Click(Sender: TObject);
+var
+  i : integer;
+begin
+  ListBox2.Items.Clear;
+  with TSnap7Device.Create(StrToInt(ListBox1.Items.Strings[ListBox1.ItemIndex])) do try
+    AddData(Edit5.Text,StrToInt(Edit6.Text),StrToInt(Edit7.Text),
+      StrToInt(Edit8.Text),StrToInt(Edit9.Text),StrToInt(Edit10.Text));
+    for i := 0 to EnumDataIDs.Count - 1 do ListBox2.Items.Add(EnumDataIDs[i]);
+  finally
+    Free;
+  end;
+end;
+
+procedure TForm1.Button4Click(Sender: TObject);
+var
+  x : integer;
+  Buf : TDataBuffer;
+begin
+  with TSnap7Data.Create(StrToInt(ListBox2.Items.Strings[ListBox2.ItemIndex]), false) do try
+    Name := Edit5.Text;
+    Area := StrToInt(Edit6.Text);
+    DBNum := StrToInt(Edit7.Text);
+    DataStart := StrToInt(Edit8.Text);
+    DataAmount := StrToInt(Edit9.Text);
+    WLen := StrToInt(Edit10.Text);
+    Async := CheckBox1.Checked;
+    for x := 0 to WordSize(DataAmount,WLen) - 1 do Buf[x] := StrToIntDef(Edit12.Text,2);
+    Buffer := Buf;
+  finally
+    Free;
+  end;
+
+end;
+
 procedure TForm1.ListBox1Click(Sender: TObject);
 var
   i : integer;
@@ -119,6 +160,7 @@ begin
     Edit8.Text := IntToStr(DataStart);
     Edit9.Text := IntToStr(DataAmount);
     Edit10.Text := IntToStr(WLen);
+    CheckBox1.Checked := Async;
     Edit11.Clear;
     for x := 0 to WordSize(DataAmount, WLen) - 1 do
       Edit11.Text := Edit11.Text + '$' + IntToHex(Buffer[x],2);

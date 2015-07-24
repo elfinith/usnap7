@@ -1,9 +1,9 @@
-unit uSnap7;
+  unit uSnap7;
 
 interface
 
 uses
-  IBDatabase, IBQuery, IBSQL, SysUtils, Classes, Dialogs, Snap7, DB;
+  IBDatabase, IBQuery, IBSQL, SysUtils, Classes, Dialogs, Snap7, DB, RyTimer, DBTables;
 
 const
   strDatabaseName = 'D:\WORK\Projects\Delphi\snap7\database\dbase.fdb';
@@ -34,7 +34,7 @@ type
 
   TDataBuffer = packed array [0..iDataBufferSize] of byte;
 
-  TSelectQuery = class
+  TSelectQuery = class(TObject)
   private
     Database : TIBDatabase;
     Transaction : TIBTransaction;
@@ -44,7 +44,7 @@ type
     destructor Destroy;
   end;
 
-  TSnap7WorkArea = class
+  TSnap7WorkArea = class(TObject)
   private
     slEnumDeviceIDs : TStringList;
     function GetDeviceIDs : TStringList;
@@ -55,7 +55,7 @@ type
     destructor Destroy;
   end;
 
-  TSnap7Device = class
+  TSnap7Device = class(TObject)
   private
     fId : integer;
     fName : string;
@@ -87,7 +87,7 @@ type
     procedure AddData(strName : string; iAreaId, iDBNum, iDataStart, iDataAmount, iWLenId : integer);
   end;
 
-  TSnap7Data = class
+  TSnap7Data = class(TObject)
   private
     fId : integer;
     fName : string;
@@ -119,7 +119,7 @@ type
     procedure SetFLastError(const Value: integer);
   public
     Device : TSnap7Device;
-    constructor Create(DM_ID : integer; Async : boolean);
+    constructor Create(DM_ID : integer);
     destructor Destroy;
     property Id : integer read GetId;
     property Name : string read GetName write SetName;
@@ -132,6 +132,20 @@ type
     property Async : boolean read GetAsync write SetAsync;
     property LastError : integer read fLastError write SetFLastError;
     function WordSize(Amount, WordLength: integer) : integer;
+  end;
+
+  TSnap7Poll = class(TObject)
+  private
+    fDM_ID : integer;
+    Timer: TRyTimer;
+  public
+    // !!!!! вернуть в private потом
+    procedure GetData(Sender: TObject);
+
+    procedure Start;
+    procedure Stop;
+    constructor Create(DM_ID, interval : integer);
+    destructor Destroy;
   end;
 
 var
@@ -520,7 +534,7 @@ begin
   FLastError := Value;
 end;
 
-constructor TSnap7Data.Create(DM_ID: integer; Async: boolean);
+constructor TSnap7Data.Create(DM_ID: integer);
 begin
   inherited Create;
   with TSelectQuery.Create('select data_map.name, data_map.area_id, data_map.db_num, '
@@ -557,6 +571,80 @@ end;
 
 destructor TSnap7Data.Destroy;
 begin
+  inherited Destroy;
+end;
+
+{ TSnap7Poll }
+
+procedure TSnap7Poll.Start;
+begin
+  Timer.Start;
+end;
+
+procedure TSnap7Poll.Stop;
+begin
+  Timer.Stop;
+end;
+
+procedure TSnap7Poll.GetData(Sender: TObject);
+var
+  i : byte;
+  DB : TIBDatabase;
+  DBt : TIBTransaction;
+  ms: TMemoryStream;
+  strQuery : string;
+  Qry : TIBSQL;
+  Buf : TDataBuffer;
+begin
+  DB := TIBDatabase.Create(nil);
+  DBt := TIBTransaction.Create(nil);
+  DB.DatabaseName := strDatabaseName;
+  DB.LoginPrompt := false;
+  for i := 0 to length(arrDBConnParams) - 1 do DB.Params.Add(arrDBConnParams[i]);
+  DB.DefaultTransaction := DBt;
+  strQuery := 'insert into data_values(dm_id,poll_time,poll_data) values('
+    + IntToStr(fDM_ID) + ',''' + FormatDateTime('dd/mm/yyyy hh:MM:ss', Now()) + ''',:data_value);';
+  try
+    with TSnap7Data.Create(fDM_ID) do try
+      Buf := Buffer;
+    finally
+      Destroy;
+    end;
+    DB.Connected := true;
+    DBt.Active := true;
+    with TIBSQL.Create(nil) do try
+      Database := DB;
+      Transaction := DBt;
+      ParamCheck := True;
+      SQL.Text := strQuery;
+      Prepare;
+      ms := TMemoryStream.Create;
+      ms.Write(Buf,SizeOf(Buf));
+      ParamByName('data_value').LoadFromStream(ms);
+      ExecQuery;
+      ms.Free;
+    finally
+      Free;
+    end;
+    DBt.Free;
+    DB.Free;
+  except
+    raise Exception.Create(strErrorSQLExec + strQuery);
+  end;
+end;
+
+constructor TSnap7Poll.Create(DM_ID, interval : integer);
+begin
+  inherited Create;
+  fDM_ID := DM_ID;
+  Timer := TRyTimer.Create;
+  Timer.Interval := interval;
+  Timer.OnTimer := GetData;
+end;
+
+destructor TSnap7Poll.Destroy;
+begin
+  Timer.Free;
   inherited Destroy;
 end;
 

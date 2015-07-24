@@ -40,6 +40,8 @@ type
     Button4: TButton;
     CheckBox1: TCheckBox;
     Edit12: TEdit;
+    Button5: TButton;
+    Button6: TButton;
     procedure BitBtn1Click(Sender: TObject);
     procedure ListBox1Click(Sender: TObject);
     procedure Button1Click(Sender: TObject);
@@ -47,6 +49,8 @@ type
     procedure ListBox2Click(Sender: TObject);
     procedure Button3Click(Sender: TObject);
     procedure Button4Click(Sender: TObject);
+    procedure Button5Click(Sender: TObject);
+    procedure Button6Click(Sender: TObject);
   private
     { Private declarations }
   public
@@ -56,6 +60,7 @@ type
 var
   Form1: TForm1;
   tst : TSnap7Device;
+  Poll : TSnap7Poll;
 
 implementation
 
@@ -117,7 +122,7 @@ var
   x : integer;
   Buf : TDataBuffer;
 begin
-  with TSnap7Data.Create(StrToInt(ListBox2.Items.Strings[ListBox2.ItemIndex]), false) do try
+  with TSnap7Data.Create(StrToInt(ListBox2.Items.Strings[ListBox2.ItemIndex])) do try
     Name := Edit5.Text;
     Area := StrToInt(Edit6.Text);
     DBNum := StrToInt(Edit7.Text);
@@ -131,6 +136,18 @@ begin
     Free;
   end;
 
+end;
+
+procedure TForm1.Button5Click(Sender: TObject);
+begin
+  Poll := TSnap7Poll.Create(StrToInt(ListBox2.Items.Strings[ListBox2.ItemIndex]),5000);
+  Poll.Start;
+end;
+
+procedure TForm1.Button6Click(Sender: TObject);
+begin
+  Poll.Stop;
+  Poll.Destroy;
 end;
 
 procedure TForm1.ListBox1Click(Sender: TObject);
@@ -153,7 +170,7 @@ procedure TForm1.ListBox2Click(Sender: TObject);
 var
   x : integer;
 begin
-  with TSnap7Data.Create(StrToInt(ListBox2.Items.Strings[ListBox2.ItemIndex]), false) do try
+  with TSnap7Data.Create(StrToInt(ListBox2.Items.Strings[ListBox2.ItemIndex])) do try
     Edit5.Text := Name;
     Edit6.Text := IntToStr(Area);
     Edit7.Text := IntToStr(DBNum);

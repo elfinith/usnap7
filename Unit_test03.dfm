@@ -256,4 +256,22 @@ object Form1: TForm1
     TabOrder = 19
     Text = '55'
   end
+  object Button5: TButton
+    Left = 314
+    Top = 383
+    Width = 55
+    Height = 25
+    Caption = 'start'
+    TabOrder = 20
+    OnClick = Button5Click
+  end
+  object Button6: TButton
+    Left = 371
+    Top = 383
+    Width = 39
+    Height = 25
+    Caption = 'stop'
+    TabOrder = 21
+    OnClick = Button6Click
+  end
 end
